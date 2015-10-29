@@ -22,14 +22,16 @@ from subprocess import CalledProcessError
 from svn_shelve_config import CONFIG
 
 START_ID = 1000
-DEBUG = True
+DEBUG = False
 
 def call_svn( *args ):
     try:
         return subprocess.check_output( ["svn"] + list(args) )
     except CalledProcessError as e:
         # stderr gets directed out to user already, just exit with code.
-        sys.exit( e.returncode )
+        sys.exit(e.returncode)
+    except KeyboardInterrupt as e:
+        sys.exit(1)
 
 
 def message( *args ):
@@ -84,10 +86,11 @@ def generate_new_id():
     except EnvironmentError as e:
         fatal("Could not open and exclusively lock %s" % (id_file,))
 
-    debug("Generated id", new_id)
+    debug("Generated id =", new_id)
     return new_id
 
-
+def get_storage_path(id):
+    return join(CONFIG.local_storage, str(id))
 
 
 def check_environment():
@@ -101,6 +104,10 @@ def check_environment():
 def do_shelve(target_dir):
     debug("Shelving", target_dir)
 
+    # Get information about SVN repo
+    info = call_svn("info", target_dir)
+    info = dict([ tuple(x.split(': ')) for x in info.strip().splitlines()])
+
     # Generate patch file based on target
     diff = call_svn("diff", target_dir)
     if not diff:
@@ -112,24 +119,43 @@ def do_shelve(target_dir):
     modifiedPaths = [ relpath(x, target_dir) for x in modifiedPaths ]
 
     for path in modifiedPaths:
-        message(path)
+        message("M\t", path) # TODO: get correct status code
+    message("")
+
+    # Generate new shelve location
+    new_id = generate_new_id()
+    storage_path = get_storage_path(new_id)
+
+    while os.path.isdir( storage_path ):
+        new_id = generate_new_id()
+        storage_path = get_storage_path(new_id)
+    os.makedirs(storage_path)
 
     # Generate meta information based on target
     meta = {
-        "id": newID,
+        "id": new_id,
         "target_dir": target_dir,
         "local_timestamp": time.ctime(time.time()),
-        "url": info["url"],
-        "revision": info["revision"].number,
+        "url": info["URL"],
+        "revision": int(info["Revision"]),
         "hostname": socket.gethostname(),
         "username": getpass.getuser(),
         "modified": modifiedPaths,
         "message": "todo"
     }
-
-    # Generate new shelve location
-
+    
     # Write all
+    meta_filename = join(storage_path, "meta")
+    patch_filename = join(storage_path, "patch")
+    
+    file(meta_filename, "wb").write(pickle.dumps(meta))
+    debug("Wrote", meta_filename)
+    
+    file(patch_filename, "wb").write(diff)
+    debug("Wrote", patch_filename)
+
+    message("Shelved changelist:", new_id)
+
 
 
 
@@ -175,8 +201,15 @@ def main():
     group.add_argument( "-u", "--unshelve", metavar="ID", default=0, type=int )
     group.add_argument( "-i", "--info", metavar="ID", default=0, type=int )
     group.add_argument( "-t", "--test", action="store_true" )
+    parser.add_argument( "-d", "--debug", action="store_true" )
     parser.add_argument( "target_dir", nargs="?", default=os.getcwd(), help="Directory on which to operate (cwd by default)." )
     args = parser.parse_args()
+
+    global DEBUG
+    DEBUG = args.debug
+
+    if not os.path.isabs(args.target_dir):
+        args.target_dir = normpath(join( os.getcwd(), args.target_dir))
 
     if args.test:
         do_tests()
