@@ -16,7 +16,7 @@ import portalocker
 import multiprocessing
 
 from pprint import pprint
-from os.path import join, normpath
+from os.path import join, normpath, relpath
 from subprocess import CalledProcessError
 
 from svn_shelve_config import CONFIG
@@ -25,7 +25,11 @@ START_ID = 1000
 DEBUG = True
 
 def call_svn( *args ):
-    return subprocess.check_output( ["svn"] + list(args) )
+    try:
+        return subprocess.check_output( ["svn"] + list(args) )
+    except CalledProcessError as e:
+        # stderr gets directed out to user already, just exit with code.
+        sys.exit( e.returncode )
 
 
 def message( *args ):
@@ -44,7 +48,7 @@ def generate_new_id():
     Generates a new unique ID by using a centralized id file, which we gain
     an exclusive lock on so that only one client may be generating an ID at 
     a particular time. This should guarantee unique id's in a distributed fashion,
-    assuming file system guarantees mutual exclusivity. Only ddanger is a client
+    assuming file system guarantees mutual exclusivity. Only danger is a client
     may hang up and leave the file locked, however this should be unlikely.
     """
     # Check location exists
@@ -88,19 +92,49 @@ def generate_new_id():
 
 def check_environment():
     try:
-        result = call_svn( ["--version"] )
+        result = call_svn(["--version"])
     except WindowsError:
-        print "ERROR: Subversion not found on system path"
-        sys.exit(1)
+        fatal("Subversion not found on system path")
     
 
 
-def do_shelve( targetDir ):
-    debug( "Shelving", targetDir )
+def do_shelve(target_dir):
+    debug("Shelving", target_dir)
+
+    # Generate patch file based on target
+    diff = call_svn("diff", target_dir)
+    if not diff:
+        print "Nothing to shelve"
+        return
+    
+    modifiedPaths = re.findall("Index: (.*)", diff)
+    modifiedPaths = [ normpath(x.strip()) for x in modifiedPaths ]
+    modifiedPaths = [ relpath(x, target_dir) for x in modifiedPaths ]
+
+    for path in modifiedPaths:
+        message(path)
+
+    # Generate meta information based on target
+    meta = {
+        "id": newID,
+        "target_dir": target_dir,
+        "local_timestamp": time.ctime(time.time()),
+        "url": info["url"],
+        "revision": info["revision"].number,
+        "hostname": socket.gethostname(),
+        "username": getpass.getuser(),
+        "modified": modifiedPaths,
+        "message": "todo"
+    }
+
+    # Generate new shelve location
+
+    # Write all
 
 
-def do_unshelve( shelveID, targetDir ):
-    debug( "Unshelving", shelveID, targetDir)
+
+def do_unshelve( shelveID, target_dir ):
+    debug( "Unshelving", shelveID, target_dir)
 
 
 def do_info( shelveID ):
@@ -120,8 +154,7 @@ def do_tests():
     num_procs = 32
     message("Testing concurrent distributed ID generation...")
     
-    pool = multiprocessing.Pool(processes=num_procs)    
-    pool = multiprocessing.Pool(processes=4)
+    pool = multiprocessing.Pool(processes=num_procs)
     mproc_results = [pool.apply_async(_mp_test_proc, (x,)) for x in xrange(gen_max)]
     all_ids = [p.get() for p in mproc_results]
     is_unique = len(all_ids) == len(set(all_ids))
