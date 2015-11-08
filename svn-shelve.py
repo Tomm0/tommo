@@ -99,7 +99,14 @@ def check_environment():
     except WindowsError:
         fatal("Subversion not found on system path")
     
+def humanize_key(s):
+    return s.replace("_", " ").title()
 
+def humanize_value(v):
+    if type(v) is list:
+        return ", ".join([humanize_value(x) for x in v])
+    else:
+        return str(v)
 
 def do_shelve(target_dir):
     debug("Shelving", target_dir)
@@ -159,12 +166,35 @@ def do_shelve(target_dir):
 
 
 
-def do_unshelve( shelveID, target_dir ):
+def do_unshelve(shelve_id, target_dir):
     debug( "Unshelving", shelveID, target_dir)
+    storage_path = get_storage_path(shelve_id)
+
+    meta_filename = join(storage_path, "meta")
+    patch_filename = join(storage_path, "patch")
+
+    try:
+        meta = pickle.loads(open(meta_filename, "rb").read())
+        patch = open(patch_filename, "rb").read()
+    except IOError:
+        fatal("%d is not a valid id")
 
 
-def do_info( shelveID ):
-    debug( "Fetching info", shelveID )
+def do_info(shelve_id):
+    debug( "Fetching info", shelve_id )
+    storage_path = get_storage_path(shelve_id)
+
+    meta_filename = join(storage_path, "meta")
+    patch_filename = join(storage_path, "patch")
+
+    try:
+        meta = pickle.loads(open(meta_filename, "rb").read())
+        patch = open(patch_filename, "rb").read()
+    except IOError:
+        fatal("%d is not a valid id")
+
+    for key, value in meta.iteritems():
+        message("%s : %s" % (humanize_key(key), humanize_value(value)))
     
     
 def _mp_test_proc(procidx):
