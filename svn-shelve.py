@@ -34,10 +34,10 @@ def call_svn( *args ):
         sys.exit(1)
 
 
-def message( *args ):
+def print_info( *args ):
     print " ".join(str(x) for x in args)
 
-def debug( *args ):
+def print_debug( *args ):
     if DEBUG:
         print "(DEBUG)", " ".join( [str(x) for x in args] )
 
@@ -69,12 +69,12 @@ def generate_new_id():
             try:
                 content = fp.read().strip()
                 last_id = int(content)
-                debug("Last id =", last_id)
+                print_debug("Last id =", last_id)
             except ValueError:
-                debug("%s contains invalid content (%s). Assuming first use." % (id_file, content))
+                print_debug("%s contains invalid content (%s). Assuming first use." % (id_file, content))
                 last_id = START_ID
             except IOError:
-                debug("Could not read content from %s. Assuming first use." % (id_file,))
+                print_debug("Could not read content from %s. Assuming first use." % (id_file,))
 
             # Generate new ID
             new_id = last_id + 1
@@ -86,7 +86,7 @@ def generate_new_id():
     except EnvironmentError as e:
         fatal("Could not open and exclusively lock %s" % (id_file,))
 
-    debug("Generated id =", new_id)
+    print_debug("Generated id =", new_id)
     return new_id
 
 def get_storage_path(id):
@@ -108,8 +108,8 @@ def humanize_value(v):
     else:
         return str(v)
 
-def do_shelve(target_dir):
-    debug("Shelving", target_dir)
+def do_shelve(target_dir, message):
+    print_debug("Shelving", target_dir, message)
 
     # Get information about SVN repo
     info = call_svn("info", target_dir)
@@ -126,8 +126,8 @@ def do_shelve(target_dir):
     modifiedPaths = [ relpath(x, target_dir) for x in modifiedPaths ]
 
     for path in modifiedPaths:
-        message("M\t", path) # TODO: get correct status code
-    message("")
+        print_info("M\t", path) # TODO: get correct status code
+    print_info("")
 
     # Generate new shelve location
     new_id = generate_new_id()
@@ -148,7 +148,7 @@ def do_shelve(target_dir):
         "hostname": socket.gethostname(),
         "username": getpass.getuser(),
         "modified": modifiedPaths,
-        "message": "todo"
+        "message": message
     }
     
     # Write all
@@ -156,18 +156,18 @@ def do_shelve(target_dir):
     patch_filename = join(storage_path, "patch")
     
     file(meta_filename, "wb").write(pickle.dumps(meta))
-    debug("Wrote", meta_filename)
+    print_debug("Wrote", meta_filename)
     
     file(patch_filename, "wb").write(diff)
-    debug("Wrote", patch_filename)
+    print_debug("Wrote", patch_filename)
 
-    message("Shelved changelist:", new_id)
+    print_info("Shelved changelist:", new_id)
 
 
 
 
 def do_unshelve(shelve_id, target_dir):
-    debug( "Unshelving", shelveID, target_dir)
+    print_debug( "Unshelving", shelveID, target_dir)
     storage_path = get_storage_path(shelve_id)
 
     meta_filename = join(storage_path, "meta")
@@ -181,7 +181,7 @@ def do_unshelve(shelve_id, target_dir):
 
 
 def do_info(shelve_id):
-    debug( "Fetching info", shelve_id )
+    print_debug( "Fetching info", shelve_id )
     storage_path = get_storage_path(shelve_id)
 
     meta_filename = join(storage_path, "meta")
@@ -194,7 +194,7 @@ def do_info(shelve_id):
         fatal("%d is not a valid id")
 
     for key, value in meta.iteritems():
-        message("%s : %s" % (humanize_key(key), humanize_value(value)))
+        print_info("%s : %s" % (humanize_key(key), humanize_value(value)))
     
     
 def _mp_test_proc(procidx):
@@ -204,11 +204,11 @@ def _mp_test_proc(procidx):
     return new_id
 
 def do_tests():
-    message("Testing single ID generation: new_id = %d" % generate_new_id())
+    print_info("Testing single ID generation: new_id = %d" % generate_new_id())
     
     gen_max = 10000
     num_procs = 32
-    message("Testing concurrent distributed ID generation...")
+    print_info("Testing concurrent distributed ID generation...")
     
     pool = multiprocessing.Pool(processes=num_procs)
     mproc_results = [pool.apply_async(_mp_test_proc, (x,)) for x in xrange(gen_max)]
@@ -216,7 +216,7 @@ def do_tests():
     is_unique = len(all_ids) == len(set(all_ids))
 
     if is_unique:
-        message("...successfully generated %d unique ID's across %d processes." % (gen_max, num_procs))
+        print_info("...successfully generated %d unique ID's across %d processes." % (gen_max, num_procs))
     else:
         fatal("Non-unique ID's generated.")
 
@@ -227,28 +227,29 @@ def main():
 
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument( "-s", "--shelve", action="store_true" )
-    group.add_argument( "-u", "--unshelve", metavar="ID", default=0, type=int )
-    group.add_argument( "-i", "--info", metavar="ID", default=0, type=int )
-    group.add_argument( "-t", "--test", action="store_true" )
-    parser.add_argument( "-d", "--debug", action="store_true" )
-    parser.add_argument( "target_dir", nargs="?", default=os.getcwd(), help="Directory on which to operate (cwd by default)." )
+    group.add_argument("-s", "--shelve", action="store_true")
+    group.add_argument("-u", "--unshelve", metavar="ID", default=0, type=int)
+    group.add_argument("-i", "--info", metavar="ID", default=0, type=int)
+    group.add_argument("-t", "--test", action="store_true")
+    parser.add_argument("-d", "--debug", action="store_true")
+    parser.add_argument("-m", "--message", metavar="MESSAGE", default="", type=str)
+    parser.add_argument("target_dir", nargs="?", default=os.getcwd(), help="Directory on which to operate (cwd by default).")
     args = parser.parse_args()
 
     global DEBUG
     DEBUG = args.debug
 
     if not os.path.isabs(args.target_dir):
-        args.target_dir = normpath(join( os.getcwd(), args.target_dir))
+        args.target_dir = normpath(join(os.getcwd(), args.target_dir))
 
     if args.test:
         do_tests()
     if args.shelve:
-        do_shelve( args.target_dir )
+        do_shelve(args.target_dir, args.message)
     elif args.unshelve:
-        do_unshelve( args.unshelve, args.target_dir )
+        do_unshelve(args.unshelve, args.target_dir)
     elif args.info:
-        do_info( args.info )
+        do_info(args.info)
 
 
 if __name__ == "__main__":
