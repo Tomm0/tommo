@@ -95,7 +95,7 @@ def get_storage_path(id):
 
 def check_environment():
     try:
-        result = call_svn(["--version"])
+        result = call_svn("--version")
     except WindowsError:
         fatal("Subversion not found on system path")
     
@@ -167,7 +167,7 @@ def do_shelve(target_dir, message):
 
 
 def do_unshelve(shelve_id, target_dir):
-    print_debug( "Unshelving", shelveID, target_dir)
+    print_debug("Unshelving", shelve_id, target_dir)
     storage_path = get_storage_path(shelve_id)
 
     meta_filename = join(storage_path, "meta")
@@ -178,6 +178,10 @@ def do_unshelve(shelve_id, target_dir):
         patch = open(patch_filename, "rb").read()
     except IOError:
         fatal("%d is not a valid id")
+
+    # Apply patch against target directory
+    # TODO: see if we can suggest a better match
+    print call_svn("patch", patch_filename, target_dir)
 
 
 def do_info(shelve_id):
