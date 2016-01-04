@@ -108,6 +108,57 @@ def humanize_value(v):
     else:
         return str(v)
 
+def extract_first_line(s):
+    line = s.split("\n")[0]
+    if len(line) > 60:
+        line = line[:60] + " ..."
+    return line
+
+
+def do_list():
+    storage_root = get_storage_path("")
+    
+    curr_user = getpass.getuser()
+    curr_host = socket.gethostname()
+
+    print_debug("Listing user shelves from", storage_root)
+    print_debug("Username:", curr_user)
+    print_debug("Hostname:", curr_host)
+
+    print_info("Shelves for %s@%s:\n" %(curr_user, curr_host))
+
+
+    for name in os.listdir(storage_root):
+        meta_filename = join(storage_root, name, "meta")
+        if not os.path.isfile(meta_filename):
+            continue
+
+        try:
+            print_debug("Unpickling", meta_filename)
+            meta = pickle.loads(open(meta_filename, "rb").read())
+        except IOError:
+            continue
+        except ValueError as e:
+            print_debug("Failed to de-pickle:", e.message)
+            continue
+
+        try:
+            username = meta["username"]
+            hostname = meta["hostname"]
+            id = meta["id"]
+            message = meta["message"]
+            url = meta["url"]        
+        except KeyError as e:
+            print_debug("Missing key from meta-data:", e.message)
+            continue
+
+        if username != curr_user or hostname != curr_host:
+            continue
+
+        print_info("%d: %s (%s)" % (id, extract_first_line(message), url))
+    
+
+
 def do_shelve(target_dir, message):
     print_debug("Shelving", target_dir, message)
 
@@ -234,6 +285,7 @@ def main():
     group.add_argument("-s", "--shelve", action="store_true")
     group.add_argument("-u", "--unshelve", metavar="ID", default=0, type=int)
     group.add_argument("-i", "--info", metavar="ID", default=0, type=int)
+    group.add_argument("-l", "--list", action="store_true")
     group.add_argument("-t", "--test", action="store_true")
     parser.add_argument("-d", "--debug", action="store_true")
     parser.add_argument("-m", "--message", metavar="MESSAGE", default="", type=str)
@@ -248,6 +300,8 @@ def main():
 
     if args.test:
         do_tests()
+    if args.list:
+        do_list()
     if args.shelve:
         do_shelve(args.target_dir, args.message)
     elif args.unshelve:
