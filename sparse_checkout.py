@@ -26,7 +26,7 @@ def svn(*args):
 def parse_conf_file(filename):
     def _strip_line(l):
         if '#' in l:
-            l = l[l.index('#'):]
+            l = l[:l.index('#')]
         return l.strip()
 
     absfilename = os.path.join( os.path.dirname( __file__ ), filename )
