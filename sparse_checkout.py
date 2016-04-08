@@ -29,10 +29,12 @@ def parse_conf_file(filename):
             l = l[l.index('#'):]
         return l.strip()
 
+    absfilename = os.path.join( os.path.dirname( __file__ ), filename )
+
     inclusions = []
     exclusions = []
 
-    for line in [ _strip_line(x) for x in open(filename, "r").readlines() ]:
+    for line in [ _strip_line(x) for x in open(absfilename, "r").readlines() ]:
         if len(line) == 0: continue
 
         if line.startswith('-'):
