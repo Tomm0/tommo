@@ -72,7 +72,7 @@ def pop_path(path):
     return path[:idx+1] # Include trailing /
     
 
-def do_sparse_checkout(url, dest, exclusions, inclusions):
+def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
     svn_client = pysvn.Client()
     svn_client.callback_ssl_server_trust_prompt = ssl_server_trust_prompt
     svn_client.callback_get_login = get_login
@@ -84,8 +84,6 @@ def do_sparse_checkout(url, dest, exclusions, inclusions):
 
     svn_up_empty = []
     svn_up_infinite = []
-
-    print "Preparing..."
 
     # 0. Determine revision we are updating to
     svn_info = svn_client.info2(url, recurse=False)
@@ -132,14 +130,23 @@ def do_sparse_checkout(url, dest, exclusions, inclusions):
 
 
     # 4. Populate the sparse folders
-    svn_client.checkout(url, dest, recurse=False)
+    if dry_run:
+        print "svn co --non-recursive", url, dest
+    else:
+        svn_client.checkout(url, dest, recurse=False)
+
     for path in svn_up_empty:
-        svn_client.update(path, depth=pysvn.depth.empty, revision=target_revision )
+        if dry_run:
+            print "svn up --depth=empty", path
+        else:
+            svn_client.update(path, depth=pysvn.depth.empty, revision=target_revision )
 
     # 5. Do actual non-sparse content updates
-    print "Updating..."
     for path in svn_up_infinite:
-        svn('up', '--depth=infinity', '--revision', str(target_revision.number), path)
+        if dry_run:
+            print "svn up --set-depth=infinity", path
+        else:
+            svn('up', '--set-depth=infinity', '--revision', str(target_revision.number), path)
 
 
 
@@ -148,6 +155,7 @@ if __name__ == "__main__":
     parser.add_argument('url', type=str, help='Source URL to checkout from.')
     parser.add_argument('path', type=str, help='Target path to checkout into.')
     parser.add_argument('-p', '--profile', default='', type=str, help='Sparse configuration profile.')
+    parser.add_argument('-d', '--dry-run', default=False, action="store_true", help="Only output SVN actions (will still query SVN server)" )
 
     args = parser.parse_args()
 
@@ -165,7 +173,7 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     try:
-        do_sparse_checkout(args.url, args.path, exclusions, inclusions)
+        do_sparse_checkout(args.url, args.path, exclusions, inclusions, dry_run = args.dry_run)
     except pysvn.ClientError as e:
         print e.message
         sys.exit(1)
