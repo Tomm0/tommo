@@ -70,6 +70,10 @@ def pop_path(path):
         return ''
 
     return path[:idx+1] # Include trailing /
+
+
+def is_dir_empty(path):
+    return len(os.listdir(path)) == 0
     
 
 def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
@@ -94,15 +98,26 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
     # will need to make sure we have all the intermediate nodes available,
     # and we will do a proper update on inclusion leaf node later
     seen_exclusions = set()
-    for path in filtered_exclusions + filtered_inclusions:
+    for path in filtered_inclusions + filtered_exclusions:
         full_path = ''
+        is_inclusion = path in filtered_inclusions
         for path_part in path.split('/'):
             full_path = full_path + '/' + path_part if path_part != '' else ''
             if full_path in seen_exclusions:
                 continue
 
-            svn_up_empty.append(dest + full_path)
             seen_exclusions.add(full_path)
+
+            is_leaf_path = (full_path == path)
+            full_dest_path = dest + full_path # full path on disk
+
+            # Don't reclear intermediate paths if they don't already exist
+            # (only need to update this folder on the first time through).
+            if not os.path.exists(full_dest_path):
+                svn_up_empty.append(full_dest_path)
+            elif is_leaf_path and not is_dir_empty(full_dest_path) and not is_inclusion:
+                svn_up_empty.append(full_dest_path) # Strip back existing                
+
 
     # 2. Iterate back down through the exclusion tree, doing an svn ls to
     # discover which paths we do actually want to checkout.
@@ -130,10 +145,11 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
 
 
     # 4. Populate the sparse folders
-    if dry_run:
-        print "svn co --non-recursive", url, dest
-    else:
-        svn_client.checkout(url, dest, recurse=False)
+    if not os.path.exists(dest):  # TODO: check is a valid svn WC
+        if dry_run:
+            print "svn co --non-recursive", url, dest
+        else:
+            svn_client.checkout(url, dest, recurse=False)
 
     for path in svn_up_empty:
         if dry_run:
