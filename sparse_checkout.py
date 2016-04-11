@@ -130,8 +130,17 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
             
             for subdir in (dirs + files):
                 full_path = path + subdir
+                full_dest_path = dest + full_path # full path on disk
                 if full_path in seen_exclusions or full_path in seen_checkouts:
                     continue
+
+                # If we already exist, then don't re-checkout. However if the folder is
+                # empty, it may be a previous exclusion (which currently have empty folders),
+                # so just in case, do an update at this location (TODO: maybe use sparse marker 
+                # files to make this explicit?)
+                if os.path.exists(full_dest_path) and not (os.path.isdir(full_dest_path) and is_dir_empty(full_dest_path)):
+                    continue
+                
                 svn_up_infinite.append(dest + full_path)
                 seen_checkouts.add(full_path)
 
@@ -162,7 +171,7 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
         if dry_run:
             print "svn up --set-depth=infinity", path
         else:
-            svn('up', '--set-depth=infinity', '--revision', str(target_revision.number), path)
+            svn('up', '--set-depth=infinity', '--revision', str(target_revision.number), '"%s"' % path)
 
 
 
