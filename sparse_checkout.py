@@ -4,7 +4,18 @@ import subprocess
 import argparse
 import getpass
 import pysvn
+import functools
 
+_wcna = pysvn.wc_notify_action
+INTERESTING_NOTIFICATIONS = [ 
+    _wcna.add,
+    _wcna.delete,
+    _wcna.restore,
+    _wcna.revert,
+    _wcna.update_update,
+    _wcna.update_add,
+    _wcna.update_delete,
+    _wcna.update_external ]
 
 def ssl_server_trust_prompt(trust_dict):
     return True, trust_dict['failures'], True
@@ -16,11 +27,35 @@ def get_login(realm, username, may_save):
     return True, username, password, True
 
 
-def svn(*args):
-    full_args = " ".join(args)
-    full_cmd = "svn " + full_args
-    #print ">", full_cmd
-    os.system(full_cmd)
+_SHOULD_CANCEL = False
+def _kb_int_except_hook(type, value, traceback):
+    global _SHOULD_CANCEL
+    if type == KeyboardInterrupt:
+        _SHOULD_CANCEL = True
+    _original_except_hook(type, value, traceback)
+
+_original_except_hook = sys.excepthook
+
+sys.excepthook = _kb_int_except_hook
+
+def svn_cancel_callback():
+    return _SHOULD_CANCEL
+
+
+def norm_drive_case(path):
+    # Makes sure windows drive speifier is lower case for string comparisons
+    if len(path) >= 2 and path[1] == ':':
+        return path[0].lower() + path[1:]
+    return path    
+
+
+def svn_notification_callback(abs_base_path, event):
+    if event['action'] in INTERESTING_NOTIFICATIONS:
+        path = norm_drive_case(os.path.normpath(event['path']))
+        abs_base_path = norm_drive_case(abs_base_path)
+        if path.startswith(abs_base_path):
+            path = path[len(abs_base_path)+1:].replace('\\', '/') 
+        print "[%s] %s @ %d" % (str(event['action']).upper(), path, int(event['revision'].number))
 
 
 def parse_conf_file(filename):
@@ -76,11 +111,15 @@ def is_dir_empty(path):
     return len(os.listdir(path)) == 0
     
 
-def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
+def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run, verbose):
     svn_client = pysvn.Client()
     svn_client.callback_ssl_server_trust_prompt = ssl_server_trust_prompt
     svn_client.callback_get_login = get_login
+    svn_client.callback_cancel = svn_cancel_callback
     svn_client.set_interactive(True)
+
+    if verbose:
+        svn_client.callback_notify = functools.partial(svn_notification_callback, os.path.abspath(dest))
 
     # Exclusions/inclusions must start with a /. 
     filtered_exclusions = [ '/' + x for x in exclusions ]
@@ -171,7 +210,7 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run):
         if dry_run:
             print "svn up --set-depth=infinity", path
         else:
-            svn('up', '--set-depth=infinity', '--revision', str(target_revision.number), '"%s"' % path)
+            svn_client.update(path, depth=pysvn.depth.infinity, revision=target_revision )
 
 
 
@@ -180,7 +219,8 @@ if __name__ == "__main__":
     parser.add_argument('url', type=str, help='Source URL to checkout from.')
     parser.add_argument('path', type=str, help='Target path to checkout into.')
     parser.add_argument('-p', '--profile', default='', type=str, help='Sparse configuration profile.')
-    parser.add_argument('-d', '--dry-run', default=False, action="store_true", help="Only output SVN actions (will still query SVN server)" )
+    parser.add_argument('-d', '--dry-run', default=False, action="store_true", help="Display SVN actions that would take place without actually performing them.")
+    parser.add_argument('-v', '--verbose', default=False, action="store_true", help="Display verbose information about operations performed.")
 
     args = parser.parse_args()
 
@@ -198,8 +238,13 @@ if __name__ == "__main__":
         sys.exit(-1)
 
     try:
-        do_sparse_checkout(args.url, args.path, exclusions, inclusions, dry_run = args.dry_run)
+        do_sparse_checkout(args.url, args.path, exclusions, inclusions,
+                           dry_run=args.dry_run, verbose=args.verbose)
     except pysvn.ClientError as e:
         print e.message
         sys.exit(1)
+    except KeyboardInterrupt:
+        _SHOULD_CANCEL = True
+        sys.exit(1)
+
 
