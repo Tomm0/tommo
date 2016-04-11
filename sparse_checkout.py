@@ -31,15 +31,17 @@ _SHOULD_CANCEL = False
 def _kb_int_except_hook(type, value, traceback):
     global _SHOULD_CANCEL
     if type == KeyboardInterrupt:
-        _SHOULD_CANCEL = True
+        #_SHOULD_CANCEL = True
+        sys.exit(1) # TODO: cleaner ctrl+c handling
+
     _original_except_hook(type, value, traceback)
 
 _original_except_hook = sys.excepthook
 
 sys.excepthook = _kb_int_except_hook
 
-def svn_cancel_callback():
-    return _SHOULD_CANCEL
+#def svn_cancel_callback():
+#    return _SHOULD_CANCEL
 
 
 def norm_drive_case(path):
@@ -115,7 +117,7 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run, verbose):
     svn_client = pysvn.Client()
     svn_client.callback_ssl_server_trust_prompt = ssl_server_trust_prompt
     svn_client.callback_get_login = get_login
-    svn_client.callback_cancel = svn_cancel_callback
+    #svn_client.callback_cancel = svn_cancel_callback
     svn_client.set_interactive(True)
 
     if verbose:
