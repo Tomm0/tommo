@@ -219,7 +219,7 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run, verbose):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Sparse SVN checkout')
     parser.add_argument('url', type=str, help='Source URL to checkout from.')
-    parser.add_argument('path', type=str, help='Target path to checkout into.')
+    parser.add_argument('path', type=str, nargs='?', help='Target path to checkout into.')
     parser.add_argument('-p', '--profile', default='', type=str, help='Sparse configuration profile.')
     parser.add_argument('-d', '--dry-run', default=False, action="store_true", help="Display SVN actions that would take place without actually performing them.")
     parser.add_argument('-v', '--verbose', default=False, action="store_true", help="Display verbose information about operations performed.")
@@ -232,6 +232,16 @@ if __name__ == "__main__":
     else:
         print "ERROR: --profile not set"
         sys.exit(-1) ## TODO: support default action
+
+    if args.path is None:
+        # Treat URL as path, and try to determine a URL
+        try:
+            existing_url = pysvn.Client().info( args.url ).url
+        except pysvn.ClientError:
+            print "ERROR: %s is not an existing working copy." % args.url
+            sys.exit(1)
+        args.path = args.url
+        args.url = existing_url
 
     try:
         exclusions, inclusions = parse_conf_file(args.profile)
