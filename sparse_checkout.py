@@ -22,7 +22,7 @@ def ssl_server_trust_prompt(trust_dict):
 
 
 def get_login(realm, username, may_save):
-    username = raw_input("Username: ")
+    username = raw_input('Username: ')
     password = getpass.getpass()
     return True, username, password, True
 
@@ -57,7 +57,7 @@ def svn_notification_callback(abs_base_path, event):
         abs_base_path = norm_drive_case(abs_base_path)
         if path.startswith(abs_base_path):
             path = path[len(abs_base_path)+1:].replace('\\', '/') 
-        print "[%s] %s @ %d" % (str(event['action']).upper(), path, int(event['revision'].number))
+        print '[%s] %s @ %d' % (str(event['action']).upper(), path, int(event['revision'].number))
 
 
 def parse_conf_file(filename):
@@ -71,7 +71,7 @@ def parse_conf_file(filename):
     inclusions = []
     exclusions = []
 
-    for line in [ _strip_line(x) for x in open(absfilename, "r").readlines() ]:
+    for line in [ _strip_line(x) for x in open(absfilename, 'r').readlines() ]:
         if len(line) == 0: continue
 
         if line.startswith('-'):
@@ -197,32 +197,32 @@ def do_sparse_checkout(url, dest, exclusions, inclusions, dry_run, verbose):
     # 4. Populate the sparse folders
     if not os.path.exists(dest):  # TODO: check is a valid svn WC
         if dry_run:
-            print "svn co --non-recursive", url, dest
+            print 'svn co --non-recursive', url, dest
         else:
             svn_client.checkout(url, dest, recurse=False)
 
     for path in svn_up_empty:
         if dry_run:
-            print "svn up --depth=empty", path
+            print 'svn up --depth=empty', path
         else:
             svn_client.update(path, depth=pysvn.depth.empty, revision=target_revision )
 
     # 5. Do actual non-sparse content updates
     for path in svn_up_infinite:
         if dry_run:
-            print "svn up --set-depth=infinity", path
+            print 'svn up --set-depth=infinity', path
         else:
             svn_client.update(path, depth=pysvn.depth.infinity, revision=target_revision )
 
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Sparse SVN checkout')
     parser.add_argument('url', type=str, help='Source URL to checkout from.')
     parser.add_argument('path', type=str, nargs='?', help='Target path to checkout into.')
     parser.add_argument('-p', '--profile', default='', type=str, help='Sparse configuration profile.')
-    parser.add_argument('-d', '--dry-run', default=False, action="store_true", help="Display SVN actions that would take place without actually performing them.")
-    parser.add_argument('-v', '--verbose', default=False, action="store_true", help="Display verbose information about operations performed.")
+    parser.add_argument('-d', '--dry-run', default=False, action='store_true', help='Display SVN actions that would take place without actually performing them.')
+    parser.add_argument('-v', '--verbose', default=False, action='store_true', help='Display verbose information about operations performed.')
 
     args = parser.parse_args()
 
@@ -230,7 +230,7 @@ if __name__ == "__main__":
         if '.conf' not in args.profile:
             args.profile = args.profile + '.conf'
     else:
-        print "ERROR: --profile not set"
+        print 'ERROR: --profile not set'
         sys.exit(-1) ## TODO: support default action
 
     if args.path is None:
@@ -238,7 +238,7 @@ if __name__ == "__main__":
         try:
             existing_url = pysvn.Client().info( args.url ).url
         except pysvn.ClientError:
-            print "ERROR: %s is not an existing working copy." % args.url
+            print 'ERROR: %s is not an existing working copy.' % args.url
             sys.exit(1)
         args.path = args.url
         args.url = existing_url
